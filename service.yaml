@@ -1,0 +1,13 @@
+kind: Service
+metadata:
+  name: cicd-demo-app-service
+  namespace: app
+spec:
+  type: NodePort # Hoặc LoadBalancer nếu bạn dùng K8s trên cloud
+  selector:
+    app: cicd-demo-app
+  ports:
+  - protocol: TCP
+    port: 80 # Cổng của service trong cluster
+    targetPort: 3000 # Cổng của container
+    nodePort: 30007 

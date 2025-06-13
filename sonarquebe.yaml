@@ -1,0 +1,171 @@
+# sonarqube.yaml
+
+# --- 1. Namespace ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sonarqube
+---
+# --- 2. PostgreSQL Secret ---
+# Lưu trữ mật khẩu cho PostgreSQL
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: sonarqube
+type: Opaque
+stringData:
+  # THAY ĐỔI CÁC GIÁ TRỊ NÀY
+  POSTGRES_USER: "sonar"
+  POSTGRES_PASSWORD: "123456"
+  POSTGRES_DB: "sonar" 
+
+---
+# --- 3. PostgreSQL PVC and Deployment ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: sonarqube
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: sonarqube
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:12
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: postgres-secret
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+---
+# --- 4. PostgreSQL Service ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-svc
+  namespace: sonarqube
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+---
+# --- 5. SonarQube PVCs and Deployment ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sonarqube-data-pvc
+  namespace: sonarqube
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sonarqube-extensions-pvc
+  namespace: sonarqube
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sonarqube
+  namespace: sonarqube
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sonarqube
+  template:
+    metadata:
+      labels:
+        app: sonarqube
+    spec:
+      initContainers:
+      - name: init-sysctl
+        image: busybox
+        command: ['sh', '-c', 'sysctl -w vm.max_map_count=262144 && sysctl -w fs.file-max=65536']
+        securityContext:
+          privileged: true
+      containers:
+        - name: sonarqube
+          image: sonarqube:lts-community
+          ports:
+            - containerPort: 9000
+          env:
+            - name: SONAR_JDBC_URL
+              value: "jdbc:postgresql://postgres-svc:5432/sonar"
+            - name: SONAR_JDBC_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+            - name: SONAR_JDBC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: sonarqube-data
+              mountPath: /opt/sonarqube/data
+            - name: sonarqube-extensions
+              mountPath: /opt/sonarqube/extensions
+      volumes:
+        - name: sonarqube-data
+          persistentVolumeClaim:
+            claimName: sonarqube-data-pvc
+        - name: sonarqube-extensions
+          persistentVolumeClaim:
+            claimName: sonarqube-extensions-pvc
+---
+# --- 6. SonarQube Service ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sonarqube-svc
+  namespace: sonarqube
+spec:
+  type: NodePort
+  selector:
+    app: sonarqube
+  ports:
+    - port: 9000
+      targetPort: 9000
+      # nodePort: 32001 # (Tùy chọn)
+
