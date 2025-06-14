@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: cicd-demo-app-container
-        image: namln0612/my-app:1.0.0
+        image: lemonday/viettelci-cd
         ports:
         - containerPort: 3000
         readinessProbe: # Kiểm tra xem container đã sẵn sàng nhận request chưa
